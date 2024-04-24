@@ -10,6 +10,7 @@
   # autounattend always installs index 1, so this default is backward-compatible
   imageSelection ? "Windows 11 Pro N",
   efi ? true,
+  allowNetworkAccess ? false,
   ...
 } @ attrs: let
   lib = pkgs.lib;
@@ -166,8 +167,10 @@
   '';
 
   finalImage =
+    let restrict = if allowNetworkAccess then "off" else "on"; in
     builtins.foldl' (acc: v:
       pkgs.runCommand "RESTRICTDIST-${v.name}.img" {
+        __noChroot = true; # Awful hack to allow network access
         buildInputs = with utils;
           [
             qemu
@@ -184,7 +187,7 @@
             "-drive"
             "file=c.img,index=0,media=disk,if=virtio,cache=unsafe"
             # Network - enable SSH forwarding
-            "-netdev user,id=n1,net=192.168.1.0/24,restrict=on,hostfwd=tcp::2022-:22"
+            "-netdev user,id=n1,net=192.168.1.0/24,restrict=${restrict},hostfwd=tcp::2022-:22"
           ]);
       in ''
         set -x
