@@ -1,8 +1,6 @@
-{ pkgs }:
-let
-  wfvm = import ../. { inherit pkgs; };
-in
-{
+{pkgs}: let
+  wfvm = import ../. {inherit pkgs;};
+in {
   anaconda3 = {
     name = "Anaconda3";
     script = let
@@ -11,18 +9,17 @@ in
         url = "https://repo.anaconda.com/archive/Anaconda3-2021.05-Windows-x86_64.exe";
         sha256 = "1lpk7k4gydyk524z1nk4rrninrwi20g2ias2njc9w0a40hwl5nwk";
       };
-    in
-      ''
+    in ''
       ln -s ${Anaconda3} ./Anaconda3.exe
       win-put Anaconda3.exe .
       echo Running Anaconda installer...
       win-exec 'start /wait "" .\Anaconda3.exe /S /D=%UserProfile%\Anaconda3'
       echo Anaconda installer finished
-      '';
+    '';
   };
   msys2 = {
     name = "MSYS2";
-    buildInputs = [ pkgs.expect ];
+    buildInputs = [pkgs.expect];
     script = let
       msys2 = pkgs.fetchurl {
         name = "msys2.exe";
@@ -47,21 +44,22 @@ in
   msys2-packages = msys-packages: {
     name = "MSYS2-packages";
     script = let
-      msys-packages-put = pkgs.lib.strings.concatStringsSep "\n"
-          (map (package: ''win-put ${package} 'msyspackages' '') msys-packages);
+      msys-packages-put =
+        pkgs.lib.strings.concatStringsSep "\n"
+        (map (package: ''win-put ${package} 'msyspackages' '') msys-packages);
     in
       # Windows command line is so shitty it can't even do glob expansion. Why do people use Windows?
       ''
-      win-exec 'mkdir msyspackages'
-      ${msys-packages-put}
-      cat > installmsyspackages.bat << EOF
-      set MSYS=c:\msys64
-      set ARCH=64
-      set PATH=%MSYS%\usr\bin;%MSYS%\mingw%ARCH%\bin;%PATH%
-      bash -c "pacman -U --noconfirm C:/Users/wfvm/msyspackages/*"
-      EOF
-      win-put installmsyspackages.bat .
-      win-exec installmsyspackages
+        win-exec 'mkdir msyspackages'
+        ${msys-packages-put}
+        cat > installmsyspackages.bat << EOF
+        set MSYS=c:\msys64
+        set ARCH=64
+        set PATH=%MSYS%\usr\bin;%MSYS%\mingw%ARCH%\bin;%PATH%
+        bash -c "pacman -U --noconfirm C:/Users/wfvm/msyspackages/*"
+        EOF
+        win-put installmsyspackages.bat .
+        win-exec installmsyspackages
       '';
   };
   msvc = {
@@ -77,16 +75,15 @@ in
       # This touchy-feely "community" piece of trash seems deliberately crafted to break Wine, so we use the VM to run it.
       download-vs = wfvm.utils.wfvm-run {
         name = "download-vs";
-        image = wfvm.makeWindowsImage { };
+        image = wfvm.makeWindowsImage {};
         isolateNetwork = false;
-        script =
-          ''
+        script = ''
           ln -s ${bootstrapper} vs_Community.exe
           ${wfvm.utils.win-put}/bin/win-put vs_Community.exe
           rm vs_Community.exe
           ${wfvm.utils.win-exec}/bin/win-exec "vs_Community.exe --quiet --norestart --layout c:\vslayout --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --lang en-US"
           ${wfvm.utils.win-get}/bin/win-get /c:/vslayout
-          '';
+        '';
       };
       cache = pkgs.stdenv.mkDerivation {
         name = "RESTRICTDIST-vs";
@@ -95,32 +92,29 @@ in
         outputHashMode = "recursive";
         outputHash = "sha256-GoOKzln8DXVMx52jWGEjwkOFkpSW+wEffAVmBVugIyk=";
 
-        phases = [ "buildPhase" ];
-        buildInputs = [ download-vs ];
-        buildPhase =
-          ''
+        phases = ["buildPhase"];
+        buildInputs = [download-vs];
+        buildPhase = ''
           mkdir $out
           cd $out
           wfvm-run-download-vs
-          '';
+        '';
       };
-    in
-      ''
+    in ''
       ln -s ${cache}/vslayout vslayout
       win-put vslayout /c:/
       echo "Running Visual Studio installer"
       win-exec "cd \vslayout && start /wait vs_Community.exe --passive --wait && echo %errorlevel%"
-      '';
+    '';
   };
   # You need to run the IDE at least once or else most of the Visual Studio trashware won't actually work.
   # With the /ResetSettings flag, it will actually start without pestering you about opening a Microsoft account.
   msvc-ide-unbreak = {
     name = "MSVC-ide-unbreak";
-    script =
-      ''
+    script = ''
       win-exec 'cd "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE" && devenv /ResetSettings'
       sleep 40
-      '';
+    '';
   };
   # Disable the Windows firewall
   disable-firewall = {
@@ -168,11 +162,11 @@ in
   # Chain together layers that are quick to run so that the VM does
   # not have to be started/shutdown for each.
   collapseLayers = scripts: {
-    name = pkgs.lib.concatMapStringsSep "-" ({ name, ... }: name) scripts;
+    name = pkgs.lib.concatMapStringsSep "-" ({name, ...}: name) scripts;
     script = builtins.concatStringsSep "\n" (
-      map ({ script, ... }: script) scripts
+      map ({script, ...}: script) scripts
     );
     buildInputs =
-      builtins.concatMap ({ buildInputs ? [], ... }: buildInputs) scripts;
+      builtins.concatMap ({buildInputs ? [], ...}: buildInputs) scripts;
   };
 }

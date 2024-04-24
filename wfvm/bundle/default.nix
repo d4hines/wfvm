@@ -1,5 +1,4 @@
-{ pkgs }:
-
+{pkgs}:
 pkgs.runCommand "win-bundle-installer.exe" {} ''
   mkdir bundle
   cd bundle

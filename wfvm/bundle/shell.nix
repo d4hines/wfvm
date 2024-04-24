@@ -1,7 +1,5 @@
-{ pkgs ? import <nixpkgs> {} }:
-
+{pkgs ? import <nixpkgs> {}}:
 pkgs.mkShell {
-
   buildInputs = [
     pkgs.go
   ];
@@ -9,5 +7,4 @@ pkgs.mkShell {
   shellHook = ''
     unset GOPATH
   '';
-
 }

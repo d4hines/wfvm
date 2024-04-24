@@ -1,13 +1,12 @@
-{ pkgs
-, baseRtc ? "2022-10-10T10:10:10"
-, cores ? "4"
-, qemuMem ? "4G"
-, efi ? true
-, enableTpm ? false
-, ...
-}:
-
-rec {
+{
+  pkgs,
+  baseRtc ? "2022-10-10T10:10:10",
+  cores ? "4",
+  qemuMem ? "4G",
+  efi ? true,
+  enableTpm ? false,
+  ...
+}: rec {
   # qemu_test is a smaller closure only building for a single system arch
   qemu = pkgs.qemu;
 
@@ -15,23 +14,30 @@ rec {
     secureBoot = true;
   };
 
-  mkQemuFlags = extraFlags: [
-    "-enable-kvm"
-    "-cpu host"
-    "-smp ${cores}"
-    "-m ${qemuMem}"
-    "-M q35,smm=on"
-    "-vga qxl"
-    "-rtc base=${baseRtc}"
-    "-device qemu-xhci"
-    "-device virtio-net-pci,netdev=n1"
-  ] ++ pkgs.lib.optionals efi [
-    "-bios ${OVMF.fd}/FV/OVMF.fd"
-  ] ++ pkgs.lib.optionals enableTpm [
-    "-chardev" "socket,id=chrtpm,path=tpm.sock"
-    "-tpmdev" "emulator,id=tpm0,chardev=chrtpm"
-    "-device" "tpm-tis,tpmdev=tpm0"
-  ] ++ extraFlags;
+  mkQemuFlags = extraFlags:
+    [
+      "-enable-kvm"
+      "-cpu host"
+      "-smp ${cores}"
+      "-m ${qemuMem}"
+      "-M q35,smm=on"
+      "-vga qxl"
+      "-rtc base=${baseRtc}"
+      "-device qemu-xhci"
+      "-device virtio-net-pci,netdev=n1"
+    ]
+    ++ pkgs.lib.optionals efi [
+      "-bios ${OVMF.fd}/FV/OVMF.fd"
+    ]
+    ++ pkgs.lib.optionals enableTpm [
+      "-chardev"
+      "socket,id=chrtpm,path=tpm.sock"
+      "-tpmdev"
+      "emulator,id=tpm0,chardev=chrtpm"
+      "-device"
+      "tpm-tis,tpmdev=tpm0"
+    ]
+    ++ extraFlags;
 
   tpmStartCommands = pkgs.lib.optionalString enableTpm ''
     mkdir -p tpmstate
@@ -95,25 +101,40 @@ rec {
       wfvm@localhost:$1 .
   '';
 
-  wfvm-run = { name, image, script, display ? false, isolateNetwork ? true, forwardedPorts ? [], fakeRtc ? true }:
-    let
-      restrict =
-        if isolateNetwork
-        then "on"
-        else "off";
-      # use socat instead of `tcp:...` to allow multiple connections
-      guestfwds =
-        builtins.concatStringsSep ""
-        (map ({ listenAddr, targetAddr, port }:
-          ",guestfwd=tcp:${listenAddr}:${toString port}-cmd:${pkgs.socat}/bin/socat\\ -\\ tcp:${targetAddr}:${toString port}"
-        ) forwardedPorts);
-      qemuParams = mkQemuFlags (pkgs.lib.optional (!display) "-display none" ++ pkgs.lib.optional (!fakeRtc) "-rtc base=localtime" ++ [
+  wfvm-run = {
+    name,
+    image,
+    script,
+    display ? false,
+    isolateNetwork ? true,
+    forwardedPorts ? [],
+    fakeRtc ? true,
+  }: let
+    restrict =
+      if isolateNetwork
+      then "on"
+      else "off";
+    # use socat instead of `tcp:...` to allow multiple connections
+    guestfwds =
+      builtins.concatStringsSep ""
+      (map (
+          {
+            listenAddr,
+            targetAddr,
+            port,
+          }: ",guestfwd=tcp:${listenAddr}:${toString port}-cmd:${pkgs.socat}/bin/socat\\ -\\ tcp:${targetAddr}:${toString port}"
+        )
+        forwardedPorts);
+    qemuParams = mkQemuFlags (pkgs.lib.optional (!display) "-display none"
+      ++ pkgs.lib.optional (!fakeRtc) "-rtc base=localtime"
+      ++ [
         "-drive"
         "file=${image},index=0,media=disk,cache=unsafe"
         "-snapshot"
         "-netdev user,id=n1,net=192.168.1.0/24,restrict=${restrict},hostfwd=tcp::2022-:22${guestfwds}"
       ]);
-    in pkgs.writeShellScriptBin "wfvm-run-${name}" ''
+  in
+    pkgs.writeShellScriptBin "wfvm-run-${name}" ''
       set -e -m
       ${tpmStartCommands}
       ${qemu}/bin/qemu-system-x86_64 ${pkgs.lib.concatStringsSep " " qemuParams} &

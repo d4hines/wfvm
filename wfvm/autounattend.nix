@@ -1,41 +1,47 @@
-{ pkgs
-, fullName ? "John Doe"
-, organization ? "KVM Authority"
-, administratorPassword ? "123456"
-, uiLanguage ? "en-US"
-, inputLocale ? "en-US"
-, userLocale ? "en-US"
-, systemLocale ? "en-US"
-, users ? {}
-, productKey ? null
-, defaultUser ? "wfvm"
-, setupCommands ? []
-, timeZone ? "UTC"
-, services ? {}
-, impureShellCommands ? []
-, driveLetter ? "D:"
-, efi ? true
-, imageSelection ? "Windows 11 Pro N"
-, enableTpm
-, ...
-}:
-
-let
+{
+  pkgs,
+  fullName ? "John Doe",
+  organization ? "KVM Authority",
+  administratorPassword ? "123456",
+  uiLanguage ? "en-US",
+  inputLocale ? "en-US",
+  userLocale ? "en-US",
+  systemLocale ? "en-US",
+  users ? {},
+  productKey ? null,
+  defaultUser ? "wfvm",
+  setupCommands ? [],
+  timeZone ? "UTC",
+  services ? {},
+  impureShellCommands ? [],
+  driveLetter ? "D:",
+  efi ? true,
+  imageSelection ? "Windows 11 Pro N",
+  enableTpm,
+  ...
+}: let
   lib = pkgs.lib;
-  serviceCommands = lib.mapAttrsToList (
-    serviceName: attrs: "powershell Set-Service -Name ${serviceName} " + (
-      lib.concatStringsSep " " (
-        (
-          lib.mapAttrsToList (
-            n: v: if builtins.typeOf v != "bool" then "-${n} ${v}" else "-${n}"
+  serviceCommands =
+    lib.mapAttrsToList (
+      serviceName: attrs:
+        "powershell Set-Service -Name ${serviceName} "
+        + (
+          lib.concatStringsSep " " (
+            (
+              lib.mapAttrsToList (
+                n: v:
+                  if builtins.typeOf v != "bool"
+                  then "-${n} ${v}"
+                  else "-${n}"
+              )
+            ) (
+              # Always run without interaction
+              {Force = true;} // attrs
+            )
           )
-        ) (
-          # Always run without interaction
-          { Force = true; } // attrs
         )
-      )
     )
-  ) services;
+    services;
 
   sshSetupCommands =
     # let
@@ -49,26 +55,37 @@ let
     #   writeKeysDesc = builtins.map (c: {Path = c; Description = "Add SSH key";})  writeKeys;
     # in
     # mkDirsDesc ++ writeKeysDesc ++
-  [
-    {
-      Path = ''powershell.exe ${driveLetter}\install-ssh.ps1'';
-      Description = "Install OpenSSH service.";
-    }
-  ];
+    [
+      {
+        Path = ''powershell.exe ${driveLetter}\install-ssh.ps1'';
+        Description = "Install OpenSSH service.";
+      }
+    ];
 
   assertCommand = c: builtins.typeOf c == "string" || builtins.typeOf c == "set" && builtins.hasAttr "Path" c && builtins.hasAttr "Description" c;
 
-  commands = builtins.map (x: assert assertCommand x; if builtins.typeOf x == "string" then { Path = x; Description = x; } else x) (
-    [ {
-      Path = "powershell.exe Set-ExecutionPolicy -Force Unrestricted";
-      Description = "Allow unsigned powershell scripts.";
-    } {
-      Path = ''powershell.exe ${driveLetter}\win-bundle-installer.exe'';
-      Description = "Install any declared packages.";
-    } {
-      Path = "net accounts /maxpwage:unlimited";
-      Description = "Disable forced password expiry.";
-    } ]
+  commands = builtins.map (x:
+    assert assertCommand x;
+      if builtins.typeOf x == "string"
+      then {
+        Path = x;
+        Description = x;
+      }
+      else x) (
+    [
+      {
+        Path = "powershell.exe Set-ExecutionPolicy -Force Unrestricted";
+        Description = "Allow unsigned powershell scripts.";
+      }
+      {
+        Path = ''powershell.exe ${driveLetter}\win-bundle-installer.exe'';
+        Description = "Install any declared packages.";
+      }
+      {
+        Path = "net accounts /maxpwage:unlimited";
+        Description = "Disable forced password expiry.";
+      }
+    ]
     ++ setupCommands
     ++ [
       {
@@ -85,43 +102,48 @@ let
       ${lib.concatStringsSep "\n" (lib.attrsets.mapAttrsToList (n: v: "<${n}>${v}</${n}>") attrs)}
     </RunSynchronousCommand>
   '';
-  mkCommands = commands: (
-    builtins.foldl' (
-      acc: v: rec {
-        i = acc.i + 1;
-        values = acc.values ++ [ (mkCommand (v // { Order = builtins.toString i; })) ];
+  mkCommands = commands:
+    (
+      builtins.foldl' (
+        acc: v: rec {
+          i = acc.i + 1;
+          values = acc.values ++ [(mkCommand (v // {Order = builtins.toString i;}))];
+        }
+      ) {
+        i = 0;
+        values = [];
       }
-    ) {
-      i = 0;
-      values = [];
-    } commands
-  ).values;
+      commands
+    )
+    .values;
 
-  mkUser =
-    { name
-    , password
-    , description ? ""
-    , displayName ? ""
-    , groups ? []
+  mkUser = {
+    name,
+    password,
+    description ? "",
+    displayName ? "",
+    groups ? [],
     # , sshKeys ? []  # Handled in scripts
-    }: ''
-      <LocalAccount wcm:action="add">
-        <Password>
-          <Value>${password}</Value>
-          <PlainText>true</PlainText>
-        </Password>
-        <Description>${description}</Description>
-        <DisplayName>${displayName}</DisplayName>
-        <Group>${builtins.concatStringsSep ";" (lib.unique ([ "Users" ] ++ groups))}</Group>
-        <Name>${name}</Name>
-      </LocalAccount>
-    '';
+  }: ''
+    <LocalAccount wcm:action="add">
+      <Password>
+        <Value>${password}</Value>
+        <PlainText>true</PlainText>
+      </Password>
+      <Description>${description}</Description>
+      <DisplayName>${displayName}</DisplayName>
+      <Group>${builtins.concatStringsSep ";" (lib.unique (["Users"] ++ groups))}</Group>
+      <Name>${name}</Name>
+    </LocalAccount>
+  '';
 
   # Windows expects a flat list of users while we want to manage them as a set
-  flatUsers = builtins.attrValues (builtins.mapAttrs (name: s: s // { inherit name; }) users);
+  flatUsers = builtins.attrValues (builtins.mapAttrs (name: s: s // {inherit name;}) users);
 
   diskId =
-    if efi then 2 else 1;
+    if efi
+    then 2
+    else 1;
 
   autounattendXML = pkgs.writeText "autounattend.xml" ''
     <?xml version="1.0" encoding="utf-8"?>
@@ -148,25 +170,33 @@ let
         </component>
         <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
           ${lib.optionalString (!enableTpm) ''
-            <RunSynchronous>
-              <RunSynchronousCommand wcm:action="add">
-                <Order>1</Order>
-                <Path>reg add HKLM\System\Setup\LabConfig /v BypassTPMCheck /t reg_dword /d 0x00000001 /f</Path>
-              </RunSynchronousCommand>
-            </RunSynchronous>
-          ''}
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>reg add HKLM\System\Setup\LabConfig /v BypassTPMCheck /t reg_dword /d 0x00000001 /f</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+    ''}
 
           <DiskConfiguration>
             <Disk wcm:action="add">
               <CreatePartitions>
                 <CreatePartition wcm:action="add">
                   <Order>1</Order>
-                  <Type>${if efi then "EFI" else "Primary"}</Type>
+                  <Type>${
+      if efi
+      then "EFI"
+      else "Primary"
+    }</Type>
                   <Size>300</Size>
                 </CreatePartition>
                 <CreatePartition wcm:action="add">
                   <Order>2</Order>
-                  <Type>${if efi then "MSR" else "Primary"}</Type>
+                  <Type>${
+      if efi
+      then "MSR"
+      else "Primary"
+    }</Type>
                   <Size>16</Size>
                 </CreatePartition>
                 <CreatePartition wcm:action="add">
@@ -178,7 +208,11 @@ let
               <ModifyPartitions>
                 <ModifyPartition wcm:action="add">
                   <Order>1</Order>
-                  <Format>${if efi then "FAT32" else "NTFS"}</Format>
+                  <Format>${
+      if efi
+      then "FAT32"
+      else "NTFS"
+    }</Format>
                   <Label>System</Label>
                   <PartitionID>1</PartitionID>
                 </ModifyPartition>
@@ -217,7 +251,11 @@ let
 
           <UserData>
             <ProductKey>
-              ${if productKey != null then "<Key>${productKey}</Key>" else "<Key/>"}
+              ${
+      if productKey != null
+      then "<Key>${productKey}</Key>"
+      else "<Key/>"
+    }
               <WillShowUI>OnError</WillShowUI>
             </ProductKey>
             <AcceptEula>true</AcceptEula>
@@ -258,27 +296,35 @@ let
           <TimeZone>${timeZone}</TimeZone>
 
           <UserAccounts>
-            ${if administratorPassword != null then ''
-    <AdministratorPassword>
-      <Value>${administratorPassword}</Value>
-      <PlainText>true</PlainText>
-    </AdministratorPassword>
-  '' else ""}
+            ${
+      if administratorPassword != null
+      then ''
+        <AdministratorPassword>
+          <Value>${administratorPassword}</Value>
+          <PlainText>true</PlainText>
+        </AdministratorPassword>
+      ''
+      else ""
+    }
             <LocalAccounts>
               ${builtins.concatStringsSep "\n" (builtins.map mkUser flatUsers)}
             </LocalAccounts>
           </UserAccounts>
 
-          ${if defaultUser == null then "" else ''
-    <AutoLogon>
-      <Password>
-        <Value>${(builtins.getAttr defaultUser users).password}</Value>
-        <PlainText>true</PlainText>
-      </Password>
-      <Enabled>true</Enabled>
-      <Username>${defaultUser}</Username>
-    </AutoLogon>
-  ''}
+          ${
+      if defaultUser == null
+      then ""
+      else ''
+        <AutoLogon>
+          <Password>
+            <Value>${(builtins.getAttr defaultUser users).password}</Value>
+            <PlainText>true</PlainText>
+          </Password>
+          <Enabled>true</Enabled>
+          <Username>${defaultUser}</Username>
+        </AutoLogon>
+      ''
+    }
 
         </component>
         <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -310,7 +356,6 @@ let
        <cpi:offlineImage cpi:source="wim:c:/wim/windows-11/install.wim#${imageSelection}" xmlns:cpi="urn:schemas-microsoft-com:cpi" />
     </unattend>
   '';
-
 in {
   # Lint and format as a sanity check
   autounattendXML = pkgs.runCommand "autounattend.xml" {} ''
@@ -321,13 +366,13 @@ in {
   setupScript = pkgs.writeText "setup.ps1" (
     ''
       # Setup SSH and keys
-    '' +
-    lib.concatStrings (
+    ''
+    + lib.concatStrings (
       builtins.map (c: ''
         # ${c.Description}
         ${c.Path}
-      '') sshSetupCommands
+      '')
+      sshSetupCommands
     )
   );
-
 }
