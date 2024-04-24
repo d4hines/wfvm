@@ -21,7 +21,7 @@
       "-smp ${cores}"
       "-m ${qemuMem}"
       "-M q35,smm=on"
-      "-vga qxl"
+      "-vga virtio"
       "-rtc base=${baseRtc}"
       "-device qemu-xhci"
       "-device virtio-net-pci,netdev=n1"
@@ -114,7 +114,6 @@
       if isolateNetwork
       then "on"
       else "off";
-    # use socat instead of `tcp:...` to allow multiple connections
     guestfwds =
       builtins.concatStringsSep ""
       (map (
@@ -125,14 +124,22 @@
           }: ",guestfwd=tcp:${listenAddr}:${toString port}-cmd:${pkgs.socat}/bin/socat\\ -\\ tcp:${targetAddr}:${toString port}"
         )
         forwardedPorts);
-    qemuParams = mkQemuFlags (pkgs.lib.optional (!display) "-display none"
+    qemuParams = mkQemuFlags (
+      [
+        (
+          if display
+          then "-display gtk,show-cursor=on -device usb-tablet,bus=usb-bus.0"
+          else "-display none"
+        )
+      ]
       ++ pkgs.lib.optional (!fakeRtc) "-rtc base=localtime"
       ++ [
         "-drive"
         "file=${image},index=0,media=disk,cache=unsafe"
         "-snapshot"
         "-netdev user,id=n1,net=192.168.1.0/24,restrict=${restrict},hostfwd=tcp::2022-:22${guestfwds}"
-      ]);
+      ]
+    );
   in
     pkgs.writeShellScriptBin "wfvm-run-${name}" ''
       set -e -m
