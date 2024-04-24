@@ -43,8 +43,8 @@
     then windowsImage
     else
       pkgs.requireFile rec {
-        name = "Win11_22H2_English_x64v2.iso";
-        sha256 = "0xhhxy47yaf1jsfmskym5f65hljw8q0aqs70my86m402i6dsjnc0";
+        name = "Win11_23H2_English_x64v2.iso";
+        sha256 = "36de5ecb7a0daa58dce68c03b9465a543ed0f5498aa8ae60ab45fb7c8c4ae402";
         message = "Get disk image ${name} from https://www.microsoft.com/en-us/software-download/windows11/";
       };
 
