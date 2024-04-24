@@ -10,7 +10,7 @@
   # autounattend always installs index 1, so this default is backward-compatible
   imageSelection ? "Windows 11 Pro N",
   efi ? true,
-  allowNetworkAccess ? false,
+  allowNetworkAccessAtBuildTime,
   ...
 } @ attrs: let
   lib = pkgs.lib;
@@ -167,10 +167,10 @@
   '';
 
   finalImage =
-    let restrict = if allowNetworkAccess then "off" else "on"; in
+    let restrict = if allowNetworkAccessAtBuildTime then "off" else "on"; in
     builtins.foldl' (acc: v:
       pkgs.runCommand "RESTRICTDIST-${v.name}.img" {
-        __noChroot = true; # Awful hack to allow network access
+        __noChroot = allowNetworkAccessAtBuildTime; # Awful hack to allow network access
         buildInputs = with utils;
           [
             qemu
